@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@chakra-ui/react";
 import { toFunctionSelector, getAbiItem } from "viem";
+import { floatToBigInt } from "@/lib/utils/format";
 import {
   toMultichainNexusAccount,
   createMeeClient,
@@ -9,6 +10,7 @@ import {
   getSudoPolicy,
   getMEEVersion,
   MEEVersion,
+  stringify,
 } from "@biconomy/abstractjs";
 import { createSmartAccountClient } from "@biconomy/account";
 import { base } from "@wagmi/core/chains";
@@ -194,12 +196,18 @@ export default function SessionPlayground() {
 
         const res = await ownerSession.grantPermissionTypedDataSign({
             redeemer: privateKeyAccount.address,
-            //feeToken: { address: USDC, chainId: base.id },
+            feeToken: { address: USDC, chainId: base.id },
             actions: [
             {
                 chainId: base.id,
                 actionTarget: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
                 actionTargetSelector: toFunctionSelector(getAbiItem({ abi: counterABI, name: "incrementCount" })),
+                actionPolicies: [getSudoPolicy()],
+            },
+            {
+                chainId: base.id,
+                actionTarget: "0xF1143f3A8D76f1Ca740d29D5671d365F66C44eD1", //process.env.NEXT_PUBLIC_BASE_USDC,
+                actionTargetSelector: toFunctionSelector(getAbiItem({ abi: USDC_ABI, name: "transfer" })),
                 actionPolicies: [getSudoPolicy()],
             },
             ],
@@ -266,26 +274,34 @@ export default function SessionPlayground() {
     }
   };
 
+  const bigIntReviver = (key, value) => {
+    if (key === 'chainId' && typeof value === 'string') {
+        return BigInt(value);
+    }
+    return value;
+  };
   // 5) ENABLE AND USE
   const step5_enable = async () => {
     setBusy(true);
     try {
         assertConnected();
         if (!sessionClient) throw new Error("Falta sessionClient (step4)");
-        let arr = sessionDetailsArray || JSON.parse(window.localStorage.getItem(`sessionDetails-${smartAccountAddress}`));
+        LOG(sessionDetailsArray)
+        let arr = JSON.parse(window.localStorage.getItem(`sessionDetails-${smartAccountAddress}`), bigIntReviver)// || sessionDetailsArray;
         if (!arr) throw new Error("No hay sessionDetails (step3)");
+        LOG(arr)
 
         display("ENABLE AND USE...");
         display("Creating transaction: ")
 
         const data = encodeFunctionData({
-            abi: counterABI,
-            functionName: "incrementCount",
-            args: [],
+            abi: USDC_ABI,
+            functionName: "transfer",
+            args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(0.000005, 18)],
         });
 
         const tx = {
-            to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
+            to: "0xF1143f3A8D76f1Ca740d29D5671d365F66C44eD1", //process.env.NEXT_PUBLIC_BASE_USDC,
             data: data,
         };
 
@@ -293,21 +309,26 @@ export default function SessionPlayground() {
             chainId: base.id,
             calls: [tx]
         };
-        display("getQuote sponsorhsip: true");
-        const quote = await sessionClient.getQuote({
-            sponsorship: true,
-            instructions: [sendOneUSDCInstruction],
-        });
-        display("getQuote work with sponsorhsip: true");
-        LOG("Quote result: ", quote);
+
+        // display("getQuote...");
+        // const quote = await sessionClient.getQuote({
+        //     feeToken: {
+        //         address: process.env.NEXT_PUBLIC_BASE_USDC,
+        //         chainId: base.id
+        //     },
+        //     instructions: [sendOneUSDCInstruction],
+        // });
+
+        // display("getQuote work");
+        // LOG("Quote result: ", quote);
 
         display("Sending transaction...")
         const usePermissionPayload = await sessionClient.usePermission({
-            sponsorship: true,
+            //sponsorship: true,
             sessionDetails: arr,
             mode: "ENABLE_AND_USE",
             instructions: [sendOneUSDCInstruction],
-            //feeToken: { address: USDC, chainId: base.id },
+            feeToken: { address: USDC, chainId: base.id },
         });
 
         display("Waiting for receipt...")
@@ -316,6 +337,8 @@ export default function SessionPlayground() {
         })
 
         display("Ok waitForSuperTransactionReceipt");
+        LOG("Session Client: ", sessionClient)
+        LOG("Payload: ", usePermissionPayload)
         LOG("waitForSuperTransactionReceipt: ", receipt);
         display("Step5 finished.");
     } catch (e) {
@@ -332,20 +355,31 @@ export default function SessionPlayground() {
     try {
         assertConnected();
         if (!sessionClient) throw new Error("Falta sessionClient (step4)");
-        let arr = sessionDetailsArray || JSON.parse(window.localStorage.getItem(`sessionDetails-${smartAccountAddress}`));
+        let arr = JSON.parse(window.localStorage.getItem(`sessionDetails-${smartAccountAddress}`), bigIntReviver)// || sessionDetailsArray;
         if (!arr) throw new Error("No hay sessionDetails (step3)");
 
         display("USE...");
         display("Creating transaction...")
 
+        // const data = encodeFunctionData({
+        //     abi: counterABI,
+        //     functionName: "incrementCount",
+        //     args: [],
+        // });
+
+        // const tx = {
+        //     to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
+        //     data: data,
+        // };
+
         const data = encodeFunctionData({
-            abi: counterABI,
-            functionName: "incrementCount",
-            args: [],
+            abi: USDC_ABI,
+            functionName: "transfer",
+            args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(1.0)],
         });
 
         const tx = {
-            to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
+            to: process.env.NEXT_PUBLIC_BASE_USDC,
             data: data,
         };
 
@@ -356,11 +390,11 @@ export default function SessionPlayground() {
 
         display("Sending transaction...")
         const usePermissionPayload = await sessionClient.usePermission({
-            sponsorship: true,
+            //sponsorship: true,
             sessionDetails: arr,
             mode: "USE",
             instructions: [sendOneUSDCInstruction],
-            //feeToken: { address: USDC, chainId: base.id },
+            feeToken: { address: USDC, chainId: base.id },
         });
 
         display("Waiting for receipt...")
@@ -369,7 +403,7 @@ export default function SessionPlayground() {
         })
 
         display("Ok waitForSuperTransactionReceipt");
-        display("waitForSuperTransactionReceipt: ", receipt);
+        LOG("waitForSuperTransactionReceipt: ", receipt);
         display("Step6 finished.");
     } catch (e) {
         console.error(e);
