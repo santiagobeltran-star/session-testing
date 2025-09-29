@@ -196,7 +196,7 @@ export default function SessionPlayground() {
 
         const res = await ownerSession.grantPermissionTypedDataSign({
             redeemer: privateKeyAccount.address,
-            feeToken: { address: USDC, chainId: base.id },
+            //feeToken: { address: USDC, chainId: base.id },
             actions: [
             {
                 chainId: base.id,
@@ -208,6 +208,12 @@ export default function SessionPlayground() {
                 chainId: base.id,
                 actionTarget: "0xF1143f3A8D76f1Ca740d29D5671d365F66C44eD1", //process.env.NEXT_PUBLIC_BASE_USDC,
                 actionTargetSelector: toFunctionSelector(getAbiItem({ abi: USDC_ABI, name: "transfer" })),
+                actionPolicies: [getSudoPolicy()],
+            },
+            {
+                chainId: base.id,
+                actionTarget: USDC,
+                actionTargetSelector: toFunctionSelector(getAbiItem({ abi: USDC_ABI, name: "approve" })),
                 actionPolicies: [getSudoPolicy()],
             },
             ],
@@ -280,7 +286,7 @@ export default function SessionPlayground() {
     }
     return value;
   };
-  // 5) ENABLE AND USE
+  // 5) ENABLE AND USE - Array de transacciones combinadas
   const step5_enable = async () => {
     setBusy(true);
     try {
@@ -292,43 +298,86 @@ export default function SessionPlayground() {
         LOG(arr)
 
         display("ENABLE AND USE...");
-        display("Creating transaction: ")
+        display("Creating transactions array: ")
 
-        const data = encodeFunctionData({
+        // Array de transacciones combinadas
+        let transactions = [];
+
+        const approveData = encodeFunctionData({
+            abi: USDC_ABI,
+            functionName: "approve",
+            args: [
+            FUTURES,
+            floatToBigInt(
+                115792089237316195423570985008687907853269984665640564039457,
+                6
+            ),
+            ],
+        });
+
+        // generate tx data
+        const tx0 = {
+            to: USDC,
+            data: approveData,
+        };
+        transactions.push(tx0);
+
+        // Transacción 1: Transfer USDC (del paso 5 original)
+        const transferData = encodeFunctionData({
             abi: USDC_ABI,
             functionName: "transfer",
             args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(0.000005, 18)],
         });
 
-        const tx = {
+        const transferTx = {
             to: "0xF1143f3A8D76f1Ca740d29D5671d365F66C44eD1", //process.env.NEXT_PUBLIC_BASE_USDC,
-            data: data,
+            data: transferData,
         };
 
-        const sendOneUSDCInstruction = {
+        transactions.push(transferTx);
+
+        // Transacción 2: Increment Counter (del paso 6 original)
+        const counterData = encodeFunctionData({
+            abi: counterABI,
+            functionName: "incrementCount",
+            args: [],
+        });
+        
+        const counterTx = {
+            to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
+            data: counterData,
+        };
+
+        transactions.push(counterTx);
+
+        display(`Created ${transactions.length} transactions in array`);
+        LOG("Transactions array:", transactions);
+
+        // Crear instrucción con todas las transacciones
+        const combinedInstruction = {
             chainId: base.id,
-            calls: [tx]
+            calls: transactions
         };
 
-        // display("getQuote...");
-        // const quote = await sessionClient.getQuote({
-        //     feeToken: {
-        //         address: process.env.NEXT_PUBLIC_BASE_USDC,
-        //         chainId: base.id
-        //     },
-        //     instructions: [sendOneUSDCInstruction],
-        // });
+        display("getQuote...");
+        const quote = await sessionClient.getQuote({
+            feeToken: {
+                address: process.env.NEXT_PUBLIC_BASE_USDC,
+                chainId: base.id
+            },
+            instructions: [combinedInstruction],
+        })
+        display("getQuote work");
+        LOG("Quote result: ", quote);
 
-        // display("getQuote work");
-        // LOG("Quote result: ", quote);
-
-        display("Sending transaction...")
+        display("Sending combined transactions...")
         const usePermissionPayload = await sessionClient.usePermission({
-            //sponsorship: true,
+            sponsorship: true,
             sessionDetails: arr,
             mode: "ENABLE_AND_USE",
-            instructions: [sendOneUSDCInstruction],
-            feeToken: { address: USDC, chainId: base.id },
+            instructions: [combinedInstruction],
+            verificationGasLimit: 1_500_000n,
+            //feeToken: { address: USDC, chainId: base.id },
         });
 
         display("Waiting for receipt...")
@@ -340,7 +389,7 @@ export default function SessionPlayground() {
         LOG("Session Client: ", sessionClient)
         LOG("Payload: ", usePermissionPayload)
         LOG("waitForSuperTransactionReceipt: ", receipt);
-        display("Step5 finished.");
+        display("Step5 finished with combined transactions.");
     } catch (e) {
         console.error(e);
         display(`ERROR step5: ${e.message}`);
@@ -361,27 +410,27 @@ export default function SessionPlayground() {
         display("USE...");
         display("Creating transaction...")
 
-        // const data = encodeFunctionData({
-        //     abi: counterABI,
-        //     functionName: "incrementCount",
-        //     args: [],
-        // });
-
-        // const tx = {
-        //     to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
-        //     data: data,
-        // };
-
         const data = encodeFunctionData({
-            abi: USDC_ABI,
-            functionName: "transfer",
-            args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(1.0)],
-        });
-
+            abi: counterABI,
+            functionName: "incrementCount",
+            args: [],
+        })        
+        
         const tx = {
-            to: process.env.NEXT_PUBLIC_BASE_USDC,
+            to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
             data: data,
         };
+
+        //const data = encodeFunctionData({
+        //    abi: USDC_ABI,
+        //    functionName: "transfer",
+        //    args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(1.0)],
+        //});
+//
+        //const tx = {
+        //    to: process.env.NEXT_PUBLIC_BASE_USDC,
+        //    data: data,
+        //};
 
         const sendOneUSDCInstruction = {
             chainId: base.id,
@@ -390,11 +439,11 @@ export default function SessionPlayground() {
 
         display("Sending transaction...")
         const usePermissionPayload = await sessionClient.usePermission({
-            //sponsorship: true,
+            sponsorship: true,
             sessionDetails: arr,
             mode: "USE",
             instructions: [sendOneUSDCInstruction],
-            feeToken: { address: USDC, chainId: base.id },
+            //feeToken: { address: USDC, chainId: base.id },
         });
 
         display("Waiting for receipt...")
