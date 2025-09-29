@@ -300,7 +300,6 @@ export default function SessionPlayground() {
         display("ENABLE AND USE...");
         display("Creating transactions array: ")
 
-        // Array de transacciones combinadas
         let transactions = [];
 
         const approveData = encodeFunctionData({
@@ -321,20 +320,6 @@ export default function SessionPlayground() {
             data: approveData,
         };
         transactions.push(tx0);
-
-        // Transacción 1: Transfer USDC (del paso 5 original)
-        const transferData = encodeFunctionData({
-            abi: USDC_ABI,
-            functionName: "transfer",
-            args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(0.000005, 18)],
-        });
-
-        const transferTx = {
-            to: "0xF1143f3A8D76f1Ca740d29D5671d365F66C44eD1", //process.env.NEXT_PUBLIC_BASE_USDC,
-            data: transferData,
-        };
-
-        transactions.push(transferTx);
 
         // Transacción 2: Increment Counter (del paso 6 original)
         const counterData = encodeFunctionData({
@@ -410,31 +395,48 @@ export default function SessionPlayground() {
         display("USE...");
         display("Creating transaction...")
 
-        const data = encodeFunctionData({
+        let transactions = [];
+
+        const approveData = encodeFunctionData({
+            abi: USDC_ABI,
+            functionName: "approve",
+            args: [
+            FUTURES,
+            floatToBigInt(
+                115792089237316195423570985008687907853269984665640564039457,
+                6
+            ),
+            ],
+        });
+
+        // generate tx data
+        const tx0 = {
+            to: USDC,
+            data: approveData,
+        };
+        transactions.push(tx0);
+
+        // Transacción 2: Increment Counter (del paso 6 original)
+        const counterData = encodeFunctionData({
             abi: counterABI,
             functionName: "incrementCount",
             args: [],
-        })        
+        });
         
-        const tx = {
+        const counterTx = {
             to: "0xCe219745Dc3439fB6892BFF2E7F69009DCb955C1",
-            data: data,
+            data: counterData,
         };
 
-        //const data = encodeFunctionData({
-        //    abi: USDC_ABI,
-        //    functionName: "transfer",
-        //    args: ["0x74eB71B215204Aa17f10bd7CaA32930Cdcf60B9A", floatToBigInt(1.0)],
-        //});
-//
-        //const tx = {
-        //    to: process.env.NEXT_PUBLIC_BASE_USDC,
-        //    data: data,
-        //};
+        transactions.push(counterTx);
 
-        const sendOneUSDCInstruction = {
+        display(`Created ${transactions.length} transactions in array`);
+        LOG("Transactions array:", transactions);
+
+        // Crear instrucción con todas las transacciones
+        const combinedInstruction = {
             chainId: base.id,
-            calls: [tx]
+            calls: transactions
         };
 
         display("Sending transaction...")
@@ -442,7 +444,8 @@ export default function SessionPlayground() {
             sponsorship: true,
             sessionDetails: arr,
             mode: "USE",
-            instructions: [sendOneUSDCInstruction],
+            verificationGasLimit: 1_500_000n,
+            instructions: [combinedInstruction],
             //feeToken: { address: USDC, chainId: base.id },
         });
 
